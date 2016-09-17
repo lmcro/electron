@@ -3,6 +3,8 @@
 import atexit
 import contextlib
 import errno
+import platform
+import re
 import shutil
 import ssl
 import subprocess
@@ -14,6 +16,33 @@ import os
 import zipfile
 
 from config import is_verbose_mode
+from env_util import get_vs_env
+
+BOTO_DIR = os.path.abspath(os.path.join(__file__, '..', '..', '..', 'vendor',
+                                        'boto'))
+
+
+def get_host_arch():
+  """Returns the host architecture with a predictable string."""
+  host_arch = platform.machine()
+
+  # Convert machine type to format recognized by gyp.
+  if re.match(r'i.86', host_arch) or host_arch == 'i86pc':
+    host_arch = 'ia32'
+  elif host_arch in ['x86_64', 'amd64']:
+    host_arch = 'x64'
+  elif host_arch.startswith('arm'):
+    host_arch = 'arm'
+
+  # platform.machine is based on running kernel. It's possible to use 64-bit
+  # kernel with 32-bit userland, e.g. to give linker slightly more memory.
+  # Distinguish between different userland bitness by querying
+  # the python binary.
+  if host_arch == 'x64' and platform.architecture()[0] == '32bit':
+    host_arch = 'ia32'
+
+  return host_arch
+
 
 def tempdir(prefix=''):
   directory = tempfile.mkdtemp(prefix=prefix)
@@ -108,9 +137,8 @@ def make_zip(zip_file_path, files, dirs):
 def rm_rf(path):
   try:
     shutil.rmtree(path)
-  except OSError as e:
-    if e.errno != errno.ENOENT:
-      raise
+  except OSError:
+    pass
 
 
 def safe_unlink(path):
@@ -154,23 +182,16 @@ def execute_stdout(argv, env=os.environ):
     execute(argv, env)
 
 
-def atom_gyp():
+def electron_gyp():
   SOURCE_ROOT = os.path.abspath(os.path.join(__file__, '..', '..', '..'))
-  gyp = os.path.join(SOURCE_ROOT, 'atom.gyp')
+  gyp = os.path.join(SOURCE_ROOT, 'electron.gyp')
   with open(gyp) as f:
     obj = eval(f.read());
     return obj['variables']
 
 
-def get_atom_shell_version():
-  return 'v' + atom_gyp()['version%']
-
-
-def get_chromedriver_version():
-  SOURCE_ROOT = os.path.abspath(os.path.join(__file__, '..', '..', '..'))
-  chromedriver = os.path.join(SOURCE_ROOT, 'dist', 'chromedriver')
-  output = subprocess.check_output([chromedriver, '-v']).strip()
-  return 'v' + output[13:output.rfind(' ')]
+def get_electron_version():
+  return 'v' + electron_gyp()['version%']
 
 
 def parse_version(version):
@@ -184,15 +205,42 @@ def parse_version(version):
     return vs + ['0'] * (4 - len(vs))
 
 
+def boto_path_dirs():
+  return [
+    os.path.join(BOTO_DIR, 'build', 'lib'),
+    os.path.join(BOTO_DIR, 'build', 'lib.linux-x86_64-2.7')
+  ]
+
+
+def run_boto_script(access_key, secret_key, script_name, *args):
+  env = os.environ.copy()
+  env['AWS_ACCESS_KEY_ID'] = access_key
+  env['AWS_SECRET_ACCESS_KEY'] = secret_key
+  env['PYTHONPATH'] = os.path.pathsep.join(
+      [env.get('PYTHONPATH', '')] + boto_path_dirs())
+
+  boto = os.path.join(BOTO_DIR, 'bin', script_name)
+  execute([sys.executable, boto] + list(args), env)
+
+
 def s3put(bucket, access_key, secret_key, prefix, key_prefix, files):
   args = [
-    's3put',
     '--bucket', bucket,
-    '--access_key', access_key,
-    '--secret_key', secret_key,
     '--prefix', prefix,
     '--key_prefix', key_prefix,
     '--grant', 'public-read'
   ] + files
 
-  execute(args)
+  run_boto_script(access_key, secret_key, 's3put', *args)
+
+
+def import_vs_env(target_arch):
+  if sys.platform != 'win32':
+    return
+
+  if target_arch == 'ia32':
+    vs_arch = 'amd64_x86'
+  else:
+    vs_arch = 'x86_amd64'
+  env = get_vs_env('14.0', vs_arch)
+  os.environ.update(env)

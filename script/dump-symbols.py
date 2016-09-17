@@ -4,7 +4,7 @@ import os
 import sys
 
 from lib.config import PLATFORM
-from lib.util import atom_gyp, execute, rm_rf
+from lib.util import electron_gyp, execute, rm_rf
 
 
 SOURCE_ROOT = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
@@ -15,17 +15,13 @@ CHROMIUM_DIR = os.path.join(SOURCE_ROOT, 'vendor', 'brightray', 'vendor',
 
 
 def main(destination):
-  if PLATFORM == 'win32':
-    register_required_dll()
+  # if PLATFORM == 'win32':
+  #   register_required_dll()
 
   rm_rf(destination)
   (project_name, product_name) = get_names_from_gyp()
 
   if PLATFORM in ['darwin', 'linux']:
-    # Generate the dump_syms tool.
-    build = os.path.join(SOURCE_ROOT, 'script', 'build.py')
-    execute([sys.executable, build, '-c', 'R', '-t', 'dump_syms'])
-
     generate_breakpad_symbols = os.path.join(SOURCE_ROOT, 'tools', 'posix',
                                              'generate_breakpad_symbols.py')
     if PLATFORM == 'darwin':
@@ -60,7 +56,7 @@ def register_required_dll():
 
 
 def get_names_from_gyp():
-  variables = atom_gyp()
+  variables = electron_gyp()
   return (variables['project_name%'], variables['product_name%'])
 
 

@@ -6,22 +6,84 @@
 
 #include <string>
 
+#include "atom/common/atom_constants.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/strings/utf_string_conversions.h"
+#include "net/base/mime_util.h"
 #include "net/base/net_errors.h"
 
 namespace atom {
 
-URLRequestBufferJob::URLRequestBufferJob(net::URLRequest* request,
-                                         net::NetworkDelegate* network_delegate,
-                                         const std::string& mime_type,
-                                         const std::string& charset,
-                                         v8::Local<v8::Object> data)
-    : net::URLRequestSimpleJob(request, network_delegate),
-      mime_type_(mime_type),
-      charset_(charset),
-      buffer_data_(new base::RefCountedBytes()) {
-  auto input = reinterpret_cast<const unsigned char*>(node::Buffer::Data(data));
-  size_t length = node::Buffer::Length(data);
-  buffer_data_->data().assign(input, input + length);
+namespace {
+
+std::string GetExtFromURL(const GURL& url) {
+  std::string spec = url.spec();
+  size_t index = spec.find_last_of('.');
+  if (index == std::string::npos || index == spec.size())
+    return std::string();
+  return spec.substr(index + 1, spec.size() - index - 1);
+}
+
+}  // namespace
+
+URLRequestBufferJob::URLRequestBufferJob(
+    net::URLRequest* request, net::NetworkDelegate* network_delegate)
+    : JsAsker<net::URLRequestSimpleJob>(request, network_delegate),
+      status_code_(net::HTTP_NOT_IMPLEMENTED) {
+}
+
+void URLRequestBufferJob::StartAsync(std::unique_ptr<base::Value> options) {
+  const base::BinaryValue* binary = nullptr;
+  if (options->IsType(base::Value::TYPE_DICTIONARY)) {
+    base::DictionaryValue* dict =
+        static_cast<base::DictionaryValue*>(options.get());
+    dict->GetString("mimeType", &mime_type_);
+    dict->GetString("charset", &charset_);
+    dict->GetBinary("data", &binary);
+  } else if (options->IsType(base::Value::TYPE_BINARY)) {
+    options->GetAsBinary(&binary);
+  }
+
+  if (mime_type_.empty()) {
+    std::string ext = GetExtFromURL(request()->url());
+#if defined(OS_WIN)
+    net::GetWellKnownMimeTypeFromExtension(base::UTF8ToUTF16(ext), &mime_type_);
+#else
+    net::GetWellKnownMimeTypeFromExtension(ext, &mime_type_);
+#endif
+  }
+
+  if (!binary) {
+    NotifyStartError(net::URLRequestStatus(
+          net::URLRequestStatus::FAILED, net::ERR_NOT_IMPLEMENTED));
+    return;
+  }
+
+  data_ = new base::RefCountedBytes(
+      reinterpret_cast<const unsigned char*>(binary->GetBuffer()),
+      binary->GetSize());
+  status_code_ = net::HTTP_OK;
+  net::URLRequestSimpleJob::Start();
+}
+
+void URLRequestBufferJob::GetResponseInfo(net::HttpResponseInfo* info) {
+  std::string status("HTTP/1.1 ");
+  status.append(base::IntToString(status_code_));
+  status.append(" ");
+  status.append(net::GetHttpReasonPhrase(status_code_));
+  status.append("\0\0", 2);
+  auto* headers = new net::HttpResponseHeaders(status);
+
+  headers->AddHeader(kCORSHeader);
+
+  if (!mime_type_.empty()) {
+    std::string content_type_header(net::HttpRequestHeaders::kContentType);
+    content_type_header.append(": ");
+    content_type_header.append(mime_type_);
+    headers->AddHeader(content_type_header);
+  }
+
+  info->headers = headers;
 }
 
 int URLRequestBufferJob::GetRefCountedData(
@@ -31,7 +93,7 @@ int URLRequestBufferJob::GetRefCountedData(
     const net::CompletionCallback& callback) const {
   *mime_type = mime_type_;
   *charset = charset_;
-  *data = buffer_data_;
+  *data = data_;
   return net::OK;
 }
 

@@ -17,7 +17,6 @@ class AtomJavaScriptDialogManager : public content::JavaScriptDialogManager {
   void RunJavaScriptDialog(
       content::WebContents* web_contents,
       const GURL& origin_url,
-      const std::string& accept_lang,
       content::JavaScriptMessageType javascript_message_type,
       const base::string16& message_text,
       const base::string16& default_prompt_text,
@@ -25,12 +24,11 @@ class AtomJavaScriptDialogManager : public content::JavaScriptDialogManager {
       bool* did_suppress_message) override;
   void RunBeforeUnloadDialog(
       content::WebContents* web_contents,
-      const base::string16& message_text,
       bool is_reload,
       const DialogClosedCallback& callback) override;
   void CancelActiveAndPendingDialogs(
       content::WebContents* web_contents) override {}
-  void WebContentsDestroyed(content::WebContents* web_contents) override {}
+  void ResetDialogState(content::WebContents* web_contents) override {};
 };
 
 }  // namespace atom

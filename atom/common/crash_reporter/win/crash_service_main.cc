@@ -20,6 +20,11 @@ const char kApplicationName[] = "application-name";
 const wchar_t kPipeNameFormat[] = L"\\\\.\\pipe\\$1 Crash Service";
 const wchar_t kStandardLogFile[] = L"operation_log.txt";
 
+void InvalidParameterHandler(const wchar_t*, const wchar_t*, const wchar_t*,
+                             unsigned int, uintptr_t) {
+  // noop.
+}
+
 bool GetCrashServiceDirectory(const std::wstring& application_name,
                               base::FilePath* dir) {
   base::FilePath temp_dir;
@@ -37,6 +42,9 @@ bool GetCrashServiceDirectory(const std::wstring& application_name,
 }  // namespace.
 
 int Main(const wchar_t* cmd) {
+  // Ignore invalid parameter errors.
+  _set_invalid_parameter_handler(InvalidParameterHandler);
+
   // Initialize all Chromium things.
   base::AtExitManager exit_manager;
   base::CommandLine::Init(0, NULL);
@@ -68,7 +76,7 @@ int Main(const wchar_t* cmd) {
   VLOG(1) << "Session start. cmdline is [" << cmd << "]";
 
   // Setting the crash reporter.
-  base::string16 pipe_name = ReplaceStringPlaceholders(kPipeNameFormat,
+  base::string16 pipe_name = base::ReplaceStringPlaceholders(kPipeNameFormat,
                                                  application_name,
                                                  NULL);
   cmd_line.AppendSwitch("no-window");
@@ -77,7 +85,8 @@ int Main(const wchar_t* cmd) {
   cmd_line.AppendSwitchNative("pipe-name", pipe_name);
 
   breakpad::CrashService crash_service;
-  if (!crash_service.Initialize(operating_dir, operating_dir))
+  if (!crash_service.Initialize(application_name, operating_dir,
+                                operating_dir))
     return 2;
 
   VLOG(1) << "Ready to process crash requests";

@@ -8,20 +8,29 @@
 #import <Cocoa/Cocoa.h>
 
 #include "base/files/file_path.h"
+#include "base/files/file_util.h"
 #include "base/logging.h"
 #include "base/mac/mac_logging.h"
 #include "base/mac/scoped_aedesc.h"
 #include "base/strings/sys_string_conversions.h"
+#include "net/base/mac/url_conversions.h"
 #include "url/gurl.h"
 
 namespace platform_util {
 
-void ShowItemInFolder(const base::FilePath& full_path) {
+bool ShowItemInFolder(const base::FilePath& path) {
+  // The API only takes absolute path.
+  base::FilePath full_path =
+      path.IsAbsolute() ? path : base::MakeAbsoluteFilePath(path);
+
   DCHECK([NSThread isMainThread]);
   NSString* path_string = base::SysUTF8ToNSString(full_path.value());
   if (!path_string || ![[NSWorkspace sharedWorkspace] selectFile:path_string
-                                        inFileViewerRootedAtPath:nil])
+                                        inFileViewerRootedAtPath:@""]) {
     LOG(WARNING) << "NSWorkspace failed to select file " << full_path.value();
+    return false;
+  }
+  return true;
 }
 
 // This function opens a file.  This doesn't use LaunchServices or NSWorkspace
@@ -31,11 +40,11 @@ void ShowItemInFolder(const base::FilePath& full_path) {
 //  2. Silent no-op for unassociated file types: http://crbug.com/50263
 // Instead, an AppleEvent is constructed to tell the Finder to open the
 // document.
-void OpenItem(const base::FilePath& full_path) {
+bool OpenItem(const base::FilePath& full_path) {
   DCHECK([NSThread isMainThread]);
   NSString* path_string = base::SysUTF8ToNSString(full_path.value());
   if (!path_string)
-    return;
+    return false;
 
   // Create the target of this AppleEvent, the Finder.
   base::mac::ScopedAEDesc<AEAddressDesc> address;
@@ -46,7 +55,7 @@ void OpenItem(const base::FilePath& full_path) {
                               address.OutPointer());  // result
   if (status != noErr) {
     OSSTATUS_LOG(WARNING, status) << "Could not create OpenItem() AE target";
-    return;
+    return false;
   }
 
   // Build the AppleEvent data structure that instructs Finder to open files.
@@ -59,7 +68,7 @@ void OpenItem(const base::FilePath& full_path) {
                               theEvent.OutPointer());  // result
   if (status != noErr) {
     OSSTATUS_LOG(WARNING, status) << "Could not create OpenItem() AE event";
-    return;
+    return false;
   }
 
   // Create the list of files (only ever one) to open.
@@ -70,7 +79,7 @@ void OpenItem(const base::FilePath& full_path) {
                         fileList.OutPointer());  // resultList
   if (status != noErr) {
     OSSTATUS_LOG(WARNING, status) << "Could not create OpenItem() AE file list";
-    return;
+    return false;
   }
 
   // Add the single path to the file list.  C-style cast to avoid both a
@@ -86,11 +95,11 @@ void OpenItem(const base::FilePath& full_path) {
     if (status != noErr) {
       OSSTATUS_LOG(WARNING, status)
           << "Could not add file path to AE list in OpenItem()";
-      return;
+      return false;
     }
   } else {
     LOG(WARNING) << "Could not get FSRef for path URL in OpenItem()";
-    return;
+    return false;
   }
 
   // Attach the file list to the AppleEvent.
@@ -100,7 +109,7 @@ void OpenItem(const base::FilePath& full_path) {
   if (status != noErr) {
     OSSTATUS_LOG(WARNING, status)
         << "Could not put the AE file list the path in OpenItem()";
-    return;
+    return false;
   }
 
   // Send the actual event.  Do not care about the reply.
@@ -116,28 +125,44 @@ void OpenItem(const base::FilePath& full_path) {
     OSSTATUS_LOG(WARNING, status)
         << "Could not send AE to Finder in OpenItem()";
   }
+  return status == noErr;
 }
 
-void OpenExternal(const GURL& url) {
+bool OpenExternal(const GURL& url, bool activate) {
   DCHECK([NSThread isMainThread]);
-  NSString* url_string = base::SysUTF8ToNSString(url.spec());
-  NSURL* ns_url = [NSURL URLWithString:url_string];
-  if (!ns_url || ![[NSWorkspace sharedWorkspace] openURL:ns_url])
-    LOG(WARNING) << "NSWorkspace failed to open URL " << url;
+  NSURL* ns_url = net::NSURLWithGURL(url);
+  if (!ns_url) {
+    return false;
+  }
+
+  CFURLRef openingApp = NULL;
+  OSStatus status = LSGetApplicationForURL((CFURLRef)ns_url,
+                                           kLSRolesAll,
+                                           NULL,
+                                           &openingApp);
+  if (status != noErr) {
+    return false;
+  }
+  CFRelease(openingApp);  // NOT A BUG; LSGetApplicationForURL retains for us
+
+  NSUInteger launchOptions = NSWorkspaceLaunchDefault;
+  if (!activate)
+    launchOptions |= NSWorkspaceLaunchWithoutActivation;
+
+  return [[NSWorkspace sharedWorkspace] openURLs: @[ns_url]
+                                        withAppBundleIdentifier: nil
+                                        options: launchOptions
+                                        additionalEventParamDescriptor: NULL
+                                        launchIdentifiers: NULL];
 }
 
 bool MoveItemToTrash(const base::FilePath& full_path) {
-  DCHECK([NSThread isMainThread]);
   NSString* path_string = base::SysUTF8ToNSString(full_path.value());
-  NSArray* file_array =
-      [NSArray arrayWithObject:[path_string lastPathComponent]];
-  BOOL status = [[NSWorkspace sharedWorkspace]
-                performFileOperation:NSWorkspaceRecycleOperation
-                source:[path_string stringByDeletingLastPathComponent]
-                destination:@""
-                files:file_array
-                tag:nil];
-  if (!path_string || !file_array || !status)
+  BOOL status = [[NSFileManager defaultManager]
+                trashItemAtURL:[NSURL fileURLWithPath:path_string]
+                resultingItemURL:nil
+                error:nil];
+  if (!path_string || !status)
     LOG(WARNING) << "NSWorkspace failed to move file " << full_path.value()
                  << " to trash";
   return status;

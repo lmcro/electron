@@ -28,6 +28,20 @@
   handlingSendEvent_ = handlingSendEvent;
 }
 
+- (void)setCurrentActivity:(NSString*)type
+              withUserInfo:(NSDictionary*)userInfo
+            withWebpageURL:(NSURL*)webpageURL {
+  currentActivity_ = base::scoped_nsobject<NSUserActivity>(
+      [[NSUserActivity alloc] initWithActivityType:type]);
+  [currentActivity_ setUserInfo:userInfo];
+  [currentActivity_ setWebpageURL:webpageURL];
+  [currentActivity_ becomeCurrent];
+}
+
+- (NSUserActivity*)getCurrentActivity {
+  return currentActivity_.get();
+}
+
 - (void)awakeFromNib {
   [[NSAppleEventManager sharedAppleEventManager]
       setEventHandler:self
@@ -43,11 +57,20 @@
   atom::Browser::Get()->OpenURL(base::SysNSStringToUTF8(url));
 }
 
+- (bool)voiceOverEnabled {
+  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  [defaults addSuiteNamed:@"com.apple.universalaccess"];
+  [defaults synchronize];
+
+  return [defaults boolForKey:@"voiceOverOnOffKey"];
+}
+
 - (void)accessibilitySetValue:(id)value forAttribute:(NSString *)attribute {
   // Undocumented attribute that VoiceOver happens to set while running.
   // Chromium uses this too, even though it's not exactly right.
   if ([attribute isEqualToString:@"AXEnhancedUserInterface"]) {
-    [self updateAccessibilityEnabled:[value boolValue]];
+    bool enableAccessibility = ([self voiceOverEnabled] && [value boolValue]);
+    [self updateAccessibilityEnabled:enableAccessibility];
   }
   return [super accessibilitySetValue:value forAttribute:attribute];
 }
@@ -60,6 +83,8 @@
   } else {
     ax_state->DisableAccessibility();
   }
+
+  atom::Browser::Get()->OnAccessibilitySupportChanged();
 }
 
 @end

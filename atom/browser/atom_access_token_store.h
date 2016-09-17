@@ -9,16 +9,14 @@
 
 namespace atom {
 
-class AtomBrowserContext;
-
 class AtomAccessTokenStore : public content::AccessTokenStore {
  public:
   AtomAccessTokenStore();
-  virtual ~AtomAccessTokenStore();
+  ~AtomAccessTokenStore();
 
   // content::AccessTokenStore:
   void LoadAccessTokens(
-      const LoadAccessTokensCallbackType& callback) override;
+      const LoadAccessTokensCallback& callback) override;
   void SaveAccessToken(const GURL& server_url,
                        const base::string16& access_token) override;
 

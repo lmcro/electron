@@ -7,7 +7,15 @@
 
 #include <string>
 
+#include "build/build_config.h"
+
+namespace base {
+class DictionaryValue;
+}
+
 namespace atom {
+
+class LoginHandler;
 
 class BrowserObserver {
  public:
@@ -25,20 +33,35 @@ class BrowserObserver {
   virtual void OnQuit() {}
 
   // The browser has opened a file by double clicking in Finder or dragging the
-  // file to the Dock icon. (OS X only)
+  // file to the Dock icon. (macOS only)
   virtual void OnOpenFile(bool* prevent_default,
                           const std::string& file_path) {}
 
   // Browser is used to open a url.
   virtual void OnOpenURL(const std::string& url) {}
 
-  // The browser is activated with no open windows (usually by clicking on the
-  // dock icon).
-  virtual void OnActivateWithNoOpenWindows() {}
+  // The browser is activated with visible/invisible windows (usually by
+  // clicking on the dock icon).
+  virtual void OnActivate(bool has_visible_windows) {}
 
   // The browser has finished loading.
   virtual void OnWillFinishLaunching() {}
-  virtual void OnFinishLaunching() {}
+  virtual void OnFinishLaunching(const base::DictionaryValue& launch_info) {}
+
+  // The browser requests HTTP login.
+  virtual void OnLogin(LoginHandler* login_handler,
+                       const base::DictionaryValue& request_details) {}
+
+  // The browser's accessibility suppport has changed.
+  virtual void OnAccessibilitySupportChanged() {}
+
+#if defined(OS_MACOSX)
+  // The browser wants to resume a user activity via handoff. (macOS only)
+  virtual void OnContinueUserActivity(
+      bool* prevent_default,
+      const std::string& type,
+      const base::DictionaryValue& user_info) {}
+#endif
 
  protected:
   virtual ~BrowserObserver() {}

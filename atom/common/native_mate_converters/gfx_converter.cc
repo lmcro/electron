@@ -5,23 +5,25 @@
 #include "atom/common/native_mate_converters/gfx_converter.h"
 
 #include "native_mate/dictionary.h"
+#include "ui/display/display.h"
+#include "ui/display/screen.h"
 #include "ui/gfx/geometry/point.h"
 #include "ui/gfx/geometry/rect.h"
-#include "ui/gfx/screen.h"
 #include "ui/gfx/geometry/size.h"
 
 namespace mate {
 
-v8::Handle<v8::Value> Converter<gfx::Point>::ToV8(v8::Isolate* isolate,
+v8::Local<v8::Value> Converter<gfx::Point>::ToV8(v8::Isolate* isolate,
                                                   const gfx::Point& val) {
-  mate::Dictionary dict(isolate, v8::Object::New(isolate));
+  mate::Dictionary dict = mate::Dictionary::CreateEmpty(isolate);
+  dict.SetHidden("simple", true);
   dict.Set("x", val.x());
   dict.Set("y", val.y());
   return dict.GetHandle();
 }
 
 bool Converter<gfx::Point>::FromV8(v8::Isolate* isolate,
-                                   v8::Handle<v8::Value> val,
+                                   v8::Local<v8::Value> val,
                                    gfx::Point* out) {
   mate::Dictionary dict;
   if (!ConvertFromV8(isolate, val, &dict))
@@ -33,16 +35,17 @@ bool Converter<gfx::Point>::FromV8(v8::Isolate* isolate,
   return true;
 }
 
-v8::Handle<v8::Value> Converter<gfx::Size>::ToV8(v8::Isolate* isolate,
-                                                  const gfx::Size& val) {
-  mate::Dictionary dict(isolate, v8::Object::New(isolate));
+v8::Local<v8::Value> Converter<gfx::Size>::ToV8(v8::Isolate* isolate,
+                                                const gfx::Size& val) {
+  mate::Dictionary dict = mate::Dictionary::CreateEmpty(isolate);
+  dict.SetHidden("simple", true);
   dict.Set("width", val.width());
   dict.Set("height", val.height());
   return dict.GetHandle();
 }
 
 bool Converter<gfx::Size>::FromV8(v8::Isolate* isolate,
-                                  v8::Handle<v8::Value> val,
+                                  v8::Local<v8::Value> val,
                                   gfx::Size* out) {
   mate::Dictionary dict;
   if (!ConvertFromV8(isolate, val, &dict))
@@ -54,9 +57,10 @@ bool Converter<gfx::Size>::FromV8(v8::Isolate* isolate,
   return true;
 }
 
-v8::Handle<v8::Value> Converter<gfx::Rect>::ToV8(v8::Isolate* isolate,
+v8::Local<v8::Value> Converter<gfx::Rect>::ToV8(v8::Isolate* isolate,
                                                  const gfx::Rect& val) {
-  mate::Dictionary dict(isolate, v8::Object::New(isolate));
+  mate::Dictionary dict = mate::Dictionary::CreateEmpty(isolate);
+  dict.SetHidden("simple", true);
   dict.Set("x", val.x());
   dict.Set("y", val.y());
   dict.Set("width", val.width());
@@ -65,7 +69,7 @@ v8::Handle<v8::Value> Converter<gfx::Rect>::ToV8(v8::Isolate* isolate,
 }
 
 bool Converter<gfx::Rect>::FromV8(v8::Isolate* isolate,
-                                  v8::Handle<v8::Value> val,
+                                  v8::Local<v8::Value> val,
                                   gfx::Rect* out) {
   mate::Dictionary dict;
   if (!ConvertFromV8(isolate, val, &dict))
@@ -79,13 +83,13 @@ bool Converter<gfx::Rect>::FromV8(v8::Isolate* isolate,
 }
 
 template<>
-struct Converter<gfx::Display::TouchSupport> {
-  static v8::Handle<v8::Value> ToV8(v8::Isolate* isolate,
-                                    const gfx::Display::TouchSupport& val) {
+struct Converter<display::Display::TouchSupport> {
+  static v8::Local<v8::Value> ToV8(v8::Isolate* isolate,
+                                    const display::Display::TouchSupport& val) {
     switch (val) {
-      case gfx::Display::TOUCH_SUPPORT_AVAILABLE:
+      case display::Display::TOUCH_SUPPORT_AVAILABLE:
         return StringToV8(isolate, "available");
-      case gfx::Display::TOUCH_SUPPORT_UNAVAILABLE:
+      case display::Display::TOUCH_SUPPORT_UNAVAILABLE:
         return StringToV8(isolate, "unavailable");
       default:
         return StringToV8(isolate, "unknown");
@@ -93,9 +97,10 @@ struct Converter<gfx::Display::TouchSupport> {
   }
 };
 
-v8::Handle<v8::Value> Converter<gfx::Display>::ToV8(v8::Isolate* isolate,
-                                                    const gfx::Display& val) {
-  mate::Dictionary dict(isolate, v8::Object::New(isolate));
+v8::Local<v8::Value> Converter<display::Display>::ToV8(
+    v8::Isolate* isolate, const display::Display& val) {
+  mate::Dictionary dict = mate::Dictionary::CreateEmpty(isolate);
+  dict.SetHidden("simple", true);
   dict.Set("id", val.id());
   dict.Set("bounds", val.bounds());
   dict.Set("workArea", val.work_area());

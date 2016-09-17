@@ -1,68 +1,138 @@
 # clipboard
 
-The `clipboard` provides methods to do copy/paste operations. An example of
-writing a string to clipboard:
+> Perform copy and paste operations on the system clipboard.
+
+The following example shows how to write a string to the clipboard:
 
 ```javascript
-var clipboard = require('clipboard');
-clipboard.writeText('Example String');
+const {clipboard} = require('electron')
+clipboard.writeText('Example String')
 ```
 
-On X Window systems, there is also a selection clipboard, to manipulate in it
+On X Window systems, there is also a selection clipboard. To manipulate it
 you need to pass `selection` to each method:
 
 ```javascript
-var clipboard = require('clipboard');
-clipboard.writeText('Example String', 'selection');
-console.log(clipboard.readText('selection'));
+const {clipboard} = require('electron')
+clipboard.writeText('Example String', 'selection')
+console.log(clipboard.readText('selection'))
 ```
 
-## clipboard.readText([type])
+## Methods
 
-* `type` String
+The `clipboard` module has the following methods:
 
-Returns the content in clipboard as plain text.
+**Note:** Experimental APIs are marked as such and could be removed in future.
 
-## clipboard.writeText(text[, type])
+### `clipboard.readText([type])`
+
+* `type` String (optional)
+
+Returns the content in the clipboard as plain text.
+
+### `clipboard.writeText(text[, type])`
 
 * `text` String
-* `type` String
+* `type` String (optional)
 
-Writes the `text` into clipboard as plain text.
+Writes the `text` into the clipboard as plain text.
 
-## clipboard.readImage([type])
+### `clipboard.readHTML([type])`
 
-* `type` String
+* `type` String (optional)
 
-Returns the content in clipboard as [NativeImage](native-image.md).
+Returns the content in the clipboard as markup.
 
-## clipboard.writeImage(image[, type])
+### `clipboard.writeHTML(markup[, type])`
+
+* `markup` String
+* `type` String (optional)
+
+Writes `markup` to the clipboard.
+
+### `clipboard.readImage([type])`
+
+* `type` String (optional)
+
+Returns the content in the clipboard as a [NativeImage](native-image.md).
+
+### `clipboard.writeImage(image[, type])`
 
 * `image` [NativeImage](native-image.md)
-* `type` String
+* `type` String (optional)
 
-Writes the `image` into clipboard.
+Writes `image` to the clipboard.
 
-## clipboard.clear([type])
+### `clipboard.readRTF([type])`
 
-* `type` String
+* `type` String (optional)
 
-Clears everything in clipboard.
+Returns the content in the clipboard as RTF.
 
-## clipboard.has(format[, type])
+### `clipboard.writeRTF(text[, type])`
 
-* `format` String
-* `type` String
+* `text` String
+* `type` String (optional)
 
-Returns whether clipboard has data in specified `format`.
+Writes the `text` into the clipboard in RTF.
 
-**Note:** This API is experimental and could be removed in future.
+### `clipboard.readBookmark()` _macOS_ _Windows_
 
-## clipboard.read(format[, type])
+Returns an Object containing `title` and `url` keys representing the bookmark in
+the clipboard. The `title` and `url` values will be empty strings when the
+bookmark is unavailable.
 
-* `format` String
-* `type` String
+### `clipboard.writeBookmark(title, url[, type])` _macOS_ _Windows_
 
-Reads the data in clipboard of the `format`.
+* `title` String
+* `url` String
+* `type` String (optional)
 
-**Note:** This API is experimental and could be removed in future.
+Writes the `title` and `url` into the clipboard as a bookmark.
+
+### `clipboard.clear([type])`
+
+* `type` String (optional)
+
+Clears the clipboard content.
+
+### `clipboard.availableFormats([type])`
+
+* `type` String (optional)
+
+Returns an array of supported formats for the clipboard `type`.
+
+### `clipboard.has(data[, type])` _Experimental_
+
+* `data` String
+* `type` String (optional)
+
+Returns whether the clipboard supports the format of specified `data`.
+
+```javascript
+const {clipboard} = require('electron')
+console.log(clipboard.has('<p>selection</p>'))
+```
+
+### `clipboard.read(data[, type])` _Experimental_
+
+* `data` String
+* `type` String (optional)
+
+Reads `data` from the clipboard.
+
+### `clipboard.write(data[, type])`
+
+* `data` Object
+  * `text` String
+  * `html` String
+  * `image` [NativeImage](native-image.md)
+  * `rtf` String
+  * `bookmark` String - The title of the url at `text`.
+* `type` String (optional)
+
+```javascript
+const {clipboard} = require('electron')
+clipboard.write({text: 'test', html: '<b>test</b>'})
+```
+Writes `data` to the clipboard.

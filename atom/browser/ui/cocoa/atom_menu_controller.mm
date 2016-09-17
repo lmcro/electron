@@ -5,79 +5,56 @@
 
 #import "atom/browser/ui/cocoa/atom_menu_controller.h"
 
+#include "atom/browser/ui/atom_menu_model.h"
 #include "base/logging.h"
 #include "base/strings/sys_string_conversions.h"
+#include "base/strings/utf_string_conversions.h"
 #include "ui/base/accelerators/accelerator.h"
 #include "ui/base/accelerators/platform_accelerator_cocoa.h"
 #include "ui/base/l10n/l10n_util_mac.h"
-#include "ui/base/models/simple_menu_model.h"
+#include "ui/events/cocoa/cocoa_event_utils.h"
 #include "ui/gfx/image/image.h"
 
 namespace {
 
-bool isLeftButtonEvent(NSEvent* event) {
-  NSEventType type = [event type];
-  return type == NSLeftMouseDown ||
-    type == NSLeftMouseDragged ||
-    type == NSLeftMouseUp;
-}
-
-bool isRightButtonEvent(NSEvent* event) {
-  NSEventType type = [event type];
-  return type == NSRightMouseDown ||
-    type == NSRightMouseDragged ||
-    type == NSRightMouseUp;
-}
-
-bool isMiddleButtonEvent(NSEvent* event) {
-  if ([event buttonNumber] != 2)
-    return false;
-
-  NSEventType type = [event type];
-  return type == NSOtherMouseDown ||
-    type == NSOtherMouseDragged ||
-    type == NSOtherMouseUp;
-}
-
-int EventFlagsFromNSEventWithModifiers(NSEvent* event, NSUInteger modifiers) {
-  int flags = 0;
-  flags |= (modifiers & NSAlphaShiftKeyMask) ? ui::EF_CAPS_LOCK_DOWN : 0;
-  flags |= (modifiers & NSShiftKeyMask) ? ui::EF_SHIFT_DOWN : 0;
-  flags |= (modifiers & NSControlKeyMask) ? ui::EF_CONTROL_DOWN : 0;
-  flags |= (modifiers & NSAlternateKeyMask) ? ui::EF_ALT_DOWN : 0;
-  flags |= (modifiers & NSCommandKeyMask) ? ui::EF_COMMAND_DOWN : 0;
-  flags |= isLeftButtonEvent(event) ? ui::EF_LEFT_MOUSE_BUTTON : 0;
-  flags |= isRightButtonEvent(event) ? ui::EF_RIGHT_MOUSE_BUTTON : 0;
-  flags |= isMiddleButtonEvent(event) ? ui::EF_MIDDLE_MOUSE_BUTTON : 0;
-  return flags;
-}
-
-// Retrieves a bitsum of ui::EventFlags from NSEvent.
-int EventFlagsFromNSEvent(NSEvent* event) {
-  NSUInteger modifiers = [event modifierFlags];
-  return EventFlagsFromNSEventWithModifiers(event, modifiers);
-}
+struct Role {
+  SEL selector;
+  const char* role;
+};
+Role kRolesMap[] = {
+  { @selector(orderFrontStandardAboutPanel:), "about" },
+  { @selector(hide:), "hide" },
+  { @selector(hideOtherApplications:), "hideothers" },
+  { @selector(unhideAllApplications:), "unhide" },
+  { @selector(arrangeInFront:), "front" },
+  { @selector(undo:), "undo" },
+  { @selector(redo:), "redo" },
+  { @selector(cut:), "cut" },
+  { @selector(copy:), "copy" },
+  { @selector(paste:), "paste" },
+  { @selector(delete:), "delete" },
+  { @selector(pasteAndMatchStyle:), "pasteandmatchstyle" },
+  { @selector(selectAll:), "selectall" },
+  { @selector(startSpeaking:), "startspeaking" },
+  { @selector(stopSpeaking:), "stopspeaking" },
+  { @selector(performMiniaturize:), "minimize" },
+  { @selector(performClose:), "close" },
+  { @selector(performZoom:), "zoom" },
+  { @selector(terminate:), "quit" },
+  { @selector(toggleFullScreen:), "togglefullscreen" },
+};
 
 }  // namespace
-
-@interface AtomMenuController (Private)
-- (void)addSeparatorToMenu:(NSMenu*)menu
-                   atIndex:(int)index;
-@end
 
 @implementation AtomMenuController
 
 @synthesize model = model_;
 
-- (id)init {
-  if ((self = [super init]))
-    [self menu];
-  return self;
-}
-
-- (id)initWithModel:(ui::MenuModel*)model {
+- (id)initWithModel:(atom::AtomMenuModel*)model useDefaultAccelerator:(BOOL)use {
   if ((self = [super init])) {
     model_ = model;
+    isMenuOpen_ = NO;
+    useDefaultAccelerator_ = use;
     [self menu];
   }
   return self;
@@ -94,7 +71,7 @@ int EventFlagsFromNSEvent(NSEvent* event) {
   [super dealloc];
 }
 
-- (void)populateWithModel:(ui::MenuModel*)model {
+- (void)populateWithModel:(atom::AtomMenuModel*)model {
   if (!menu_)
     return;
 
@@ -103,7 +80,7 @@ int EventFlagsFromNSEvent(NSEvent* event) {
 
   const int count = model->GetItemCount();
   for (int index = 0; index < count; index++) {
-    if (model->GetTypeAt(index) == ui::MenuModel::TYPE_SEPARATOR)
+    if (model->GetTypeAt(index) == atom::AtomMenuModel::TYPE_SEPARATOR)
       [self addSeparatorToMenu:menu_ atIndex:index];
     else
       [self addItemToMenu:menu_ atIndex:index fromModel:model];
@@ -120,12 +97,12 @@ int EventFlagsFromNSEvent(NSEvent* event) {
 
 // Creates a NSMenu from the given model. If the model has submenus, this can
 // be invoked recursively.
-- (NSMenu*)menuFromModel:(ui::MenuModel*)model {
+- (NSMenu*)menuFromModel:(atom::AtomMenuModel*)model {
   NSMenu* menu = [[[NSMenu alloc] initWithTitle:@""] autorelease];
 
   const int count = model->GetItemCount();
   for (int index = 0; index < count; index++) {
-    if (model->GetTypeAt(index) == ui::MenuModel::TYPE_SEPARATOR)
+    if (model->GetTypeAt(index) == atom::AtomMenuModel::TYPE_SEPARATOR)
       [self addSeparatorToMenu:menu atIndex:index];
     else
       [self addItemToMenu:menu atIndex:index fromModel:model];
@@ -147,7 +124,7 @@ int EventFlagsFromNSEvent(NSEvent* event) {
 // associated with the entry in the model identified by |modelIndex|.
 - (void)addItemToMenu:(NSMenu*)menu
               atIndex:(NSInteger)index
-            fromModel:(ui::MenuModel*)model {
+            fromModel:(atom::AtomMenuModel*)model {
   base::string16 label16 = model->GetLabelAt(index);
   NSString* label = l10n_util::FixUpWindowsStyleLabel(label16);
   base::scoped_nsobject<NSMenuItem> item(
@@ -160,24 +137,25 @@ int EventFlagsFromNSEvent(NSEvent* event) {
   if (model->GetIconAt(index, &icon) && !icon.IsEmpty())
     [item setImage:icon.ToNSImage()];
 
-  ui::MenuModel::ItemType type = model->GetTypeAt(index);
-  if (type == ui::MenuModel::TYPE_SUBMENU) {
+  atom::AtomMenuModel::ItemType type = model->GetTypeAt(index);
+  if (type == atom::AtomMenuModel::TYPE_SUBMENU) {
     // Recursively build a submenu from the sub-model at this index.
     [item setTarget:nil];
     [item setAction:nil];
-    ui::MenuModel* submenuModel = model->GetSubmenuModelAt(index);
-    NSMenu* submenu =
-        [self menuFromModel:(ui::SimpleMenuModel*)submenuModel];
+    atom::AtomMenuModel* submenuModel = static_cast<atom::AtomMenuModel*>(
+        model->GetSubmenuModelAt(index));
+    NSMenu* submenu = [self menuFromModel:submenuModel];
     [submenu setTitle:[item title]];
     [item setSubmenu:submenu];
 
-    // Hack to set window and help menu.
-    if ([[item title] isEqualToString:@"Window"] && [submenu numberOfItems] > 0)
+    // Set submenu's role.
+    base::string16 role = model->GetRoleAt(index);
+    if (role == base::ASCIIToUTF16("window") && [submenu numberOfItems])
       [NSApp setWindowsMenu:submenu];
-    else if ([[item title] isEqualToString:@"Help"])
+    else if (role == base::ASCIIToUTF16("help"))
       [NSApp setHelpMenu:submenu];
-    if ([[item title] isEqualToString:@"Services"] &&
-        [submenu numberOfItems] == 0)
+
+    if (role == base::ASCIIToUTF16("services"))
       [NSApp setServicesMenu:submenu];
   } else {
     // The MenuModel works on indexes so we can't just set the command id as the
@@ -186,11 +164,11 @@ int EventFlagsFromNSEvent(NSEvent* event) {
     // model. Setting the target to |self| allows this class to participate
     // in validation of the menu items.
     [item setTag:index];
-    [item setTarget:self];
     NSValue* modelObject = [NSValue valueWithPointer:model];
     [item setRepresentedObject:modelObject];  // Retains |modelObject|.
     ui::Accelerator accelerator;
-    if (model->GetAcceleratorAt(index, &accelerator)) {
+    if (model->GetAcceleratorAtWithParams(
+            index, useDefaultAccelerator_, &accelerator)) {
       const ui::PlatformAcceleratorCocoa* platformAccelerator =
           static_cast<const ui::PlatformAcceleratorCocoa*>(
               accelerator.platform_accelerator());
@@ -198,6 +176,19 @@ int EventFlagsFromNSEvent(NSEvent* event) {
         [item setKeyEquivalent:platformAccelerator->characters()];
         [item setKeyEquivalentModifierMask:
             platformAccelerator->modifier_mask()];
+      }
+    }
+
+    // Set menu item's role.
+    base::string16 role = model->GetRoleAt(index);
+    [item setTarget:self];
+    if (!role.empty()) {
+      for (const Role& pair : kRolesMap) {
+        if (role == base::ASCIIToUTF16(pair.role)) {
+          [item setTarget:nil];
+          [item setAction:pair.selector];
+          break;
+        }
       }
     }
   }
@@ -213,8 +204,8 @@ int EventFlagsFromNSEvent(NSEvent* event) {
     return NO;
 
   NSInteger modelIndex = [item tag];
-  ui::MenuModel* model =
-      static_cast<ui::MenuModel*>(
+  atom::AtomMenuModel* model =
+      static_cast<atom::AtomMenuModel*>(
           [[(id)item representedObject] pointerValue]);
   DCHECK(model);
   if (model) {
@@ -241,13 +232,14 @@ int EventFlagsFromNSEvent(NSEvent* event) {
 // item chosen.
 - (void)itemSelected:(id)sender {
   NSInteger modelIndex = [sender tag];
-  ui::MenuModel* model =
-      static_cast<ui::MenuModel*>(
+  atom::AtomMenuModel* model =
+      static_cast<atom::AtomMenuModel*>(
           [[sender representedObject] pointerValue]);
   DCHECK(model);
   if (model) {
-    int event_flags = EventFlagsFromNSEvent([NSApp currentEvent]);
-    model->ActivatedAt(modelIndex, event_flags);
+    NSEvent* event = [NSApp currentEvent];
+    model->ActivatedAt(modelIndex,
+                       ui::EventFlagsFromModifiers([event modifierFlags]));
   }
 }
 

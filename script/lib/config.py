@@ -6,8 +6,10 @@ import platform
 import sys
 
 
-BASE_URL = 'http://gh-contractor-zcbenz.s3.amazonaws.com/libchromiumcontent'
-LIBCHROMIUMCONTENT_COMMIT = '0fb4fbe55f5a967b960644f0fdc2013668d5a46a'
+BASE_URL = os.getenv('LIBCHROMIUMCONTENT_MIRROR') or \
+    'https://s3.amazonaws.com/github-janky-artifacts/libchromiumcontent'
+LIBCHROMIUMCONTENT_COMMIT = os.getenv('LIBCHROMIUMCONTENT_COMMIT') or \
+    '63b939087a4a8170a82c8caf0f6e9cfcf234472b'
 
 PLATFORM = {
   'cygwin': 'win32',
@@ -19,41 +21,47 @@ PLATFORM = {
 verbose_mode = False
 
 
-def get_target_arch():
-  # Always build 64bit on OS X.
-  if PLATFORM == 'darwin':
-    return 'x64'
-  # Only build for host's arch on Linux.
-  elif PLATFORM == 'linux':
-    if platform.architecture()[0] == '32bit':
-      return 'ia32'
-    else:
-      return 'x64'
-  # On Windows it depends on user.
-  elif PLATFORM == 'win32':
-    try:
-      target_arch_path = os.path.join(__file__, '..', '..', '..', 'vendor',
-                                      'brightray', 'vendor', 'download',
-                                      'libchromiumcontent', '.target_arch')
-      with open(os.path.normpath(target_arch_path)) as f:
-        return f.read().strip()
-    except IOError as e:
-      if e.errno != errno.ENOENT:
-        raise
-    # Build 32bit by default.
-    return 'ia32'
-  # Maybe we will support other platforms in future.
+def get_platform_key():
+  if os.environ.has_key('MAS_BUILD'):
+    return 'mas'
   else:
-    return 'x64'
+    return PLATFORM
+
+
+def get_target_arch():
+  try:
+    target_arch_path = os.path.join(__file__, '..', '..', '..', 'vendor',
+                                    'brightray', 'vendor', 'download',
+                                    'libchromiumcontent', '.target_arch')
+    with open(os.path.normpath(target_arch_path)) as f:
+      return f.read().strip()
+  except IOError as e:
+    if e.errno != errno.ENOENT:
+      raise
+
+  return 'x64'
+
+
+def get_chromedriver_version():
+  return 'v2.21'
+
+def get_env_var(name):
+  value = os.environ.get('ELECTRON_' + name, '')
+  if not value:
+    # TODO Remove ATOM_SHELL_* fallback values
+    value = os.environ.get('ATOM_SHELL_' + name, '')
+    if value:
+      print 'Warning: Use $ELECTRON_' + name + ' instead of $ATOM_SHELL_' + name
+  return value
 
 
 def s3_config():
-  config = (os.environ.get('ATOM_SHELL_S3_BUCKET', ''),
-            os.environ.get('ATOM_SHELL_S3_ACCESS_KEY', ''),
-            os.environ.get('ATOM_SHELL_S3_SECRET_KEY', ''))
-  message = ('Error: Please set the $ATOM_SHELL_S3_BUCKET, '
-             '$ATOM_SHELL_S3_ACCESS_KEY, and '
-             '$ATOM_SHELL_S3_SECRET_KEY environment variables')
+  config = (get_env_var('S3_BUCKET'),
+            get_env_var('S3_ACCESS_KEY'),
+            get_env_var('S3_SECRET_KEY'))
+  message = ('Error: Please set the $ELECTRON_S3_BUCKET, '
+             '$ELECTRON_S3_ACCESS_KEY, and '
+             '$ELECTRON_S3_SECRET_KEY environment variables')
   assert all(len(c) for c in config), message
   return config
 
@@ -66,3 +74,13 @@ def enable_verbose_mode():
 
 def is_verbose_mode():
   return verbose_mode
+
+
+def get_zip_name(name, version, suffix=''):
+  arch = get_target_arch()
+  if arch == 'arm':
+    arch += 'v7l'
+  zip_name = '{0}-{1}-{2}-{3}'.format(name, version, get_platform_key(), arch)
+  if suffix:
+    zip_name += '-' + suffix
+  return zip_name + '.zip'

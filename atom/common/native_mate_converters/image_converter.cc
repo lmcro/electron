@@ -11,7 +11,7 @@
 namespace mate {
 
 bool Converter<gfx::ImageSkia>::FromV8(v8::Isolate* isolate,
-                                       v8::Handle<v8::Value> val,
+                                       v8::Local<v8::Value> val,
                                        gfx::ImageSkia* out) {
   gfx::Image image;
   if (!ConvertFromV8(isolate, val, &image))
@@ -22,28 +22,20 @@ bool Converter<gfx::ImageSkia>::FromV8(v8::Isolate* isolate,
 }
 
 bool Converter<gfx::Image>::FromV8(v8::Isolate* isolate,
-                                   v8::Handle<v8::Value> val,
+                                   v8::Local<v8::Value> val,
                                    gfx::Image* out) {
   if (val->IsNull())
     return true;
 
   Handle<atom::api::NativeImage> native_image;
-  if (!ConvertFromV8(isolate, val, &native_image)) {
-    // Try converting from file path.
-    base::FilePath path;
-    if (!Converter<base::FilePath>::FromV8(isolate, val, &path))
-      return false;
-
-    native_image = atom::api::NativeImage::CreateFromPath(isolate, path);
-    if (native_image->image().IsEmpty())
-      return false;
-  }
+  if (!ConvertFromV8(isolate, val, &native_image))
+    return false;
 
   *out = native_image->image();
   return true;
 }
 
-v8::Handle<v8::Value> Converter<gfx::Image>::ToV8(v8::Isolate* isolate,
+v8::Local<v8::Value> Converter<gfx::Image>::ToV8(v8::Isolate* isolate,
                                                   const gfx::Image& val) {
   return ConvertToV8(isolate, atom::api::NativeImage::Create(isolate, val));
 }

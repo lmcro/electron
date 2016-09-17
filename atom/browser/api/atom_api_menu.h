@@ -5,25 +5,25 @@
 #ifndef ATOM_BROWSER_API_ATOM_API_MENU_H_
 #define ATOM_BROWSER_API_ATOM_API_MENU_H_
 
+#include <memory>
 #include <string>
 
 #include "atom/browser/api/atom_api_window.h"
+#include "atom/browser/api/trackable_object.h"
+#include "atom/browser/ui/atom_menu_model.h"
 #include "base/callback.h"
-#include "base/memory/scoped_ptr.h"
-#include "ui/base/models/simple_menu_model.h"
-#include "native_mate/wrappable.h"
 
 namespace atom {
 
 namespace api {
 
-class Menu : public mate::Wrappable,
-             public ui::SimpleMenuModel::Delegate {
+class Menu : public mate::TrackableObject<Menu>,
+             public AtomMenuModel::Delegate {
  public:
-  static mate::Wrappable* Create();
+  static mate::WrappableBase* New(mate::Arguments* args);
 
   static void BuildPrototype(v8::Isolate* isolate,
-                             v8::Handle<v8::ObjectTemplate> prototype);
+                             v8::Local<v8::FunctionTemplate> prototype);
 
 #if defined(OS_MACOSX)
   // Set the global menubar.
@@ -33,29 +33,31 @@ class Menu : public mate::Wrappable,
   static void SendActionToFirstResponder(const std::string& action);
 #endif
 
-  ui::SimpleMenuModel* model() const { return model_.get(); }
+  AtomMenuModel* model() const { return model_.get(); }
 
  protected:
-  Menu();
-  virtual ~Menu();
+  Menu(v8::Isolate* isolate, v8::Local<v8::Object> wrapper);
+  ~Menu() override;
 
   // mate::Wrappable:
   void AfterInit(v8::Isolate* isolate) override;
 
-  // ui::SimpleMenuModel::Delegate implementations:
+  // ui::SimpleMenuModel::Delegate:
   bool IsCommandIdChecked(int command_id) const override;
   bool IsCommandIdEnabled(int command_id) const override;
   bool IsCommandIdVisible(int command_id) const override;
-  bool GetAcceleratorForCommandId(int command_id,
-                                  ui::Accelerator* accelerator) override;
+  bool GetAcceleratorForCommandIdWithParams(
+      int command_id,
+      bool use_default_accelerator,
+      ui::Accelerator* accelerator) const override;
   void ExecuteCommand(int command_id, int event_flags) override;
   void MenuWillShow(ui::SimpleMenuModel* source) override;
 
-  virtual void AttachToWindow(Window* window);
-  virtual void Popup(Window* window) = 0;
-  virtual void PopupAt(Window* window, int x, int y) = 0;
+  virtual void PopupAt(Window* window,
+                       int x = -1, int y = -1,
+                       int positioning_item = 0) = 0;
 
-  scoped_ptr<ui::SimpleMenuModel> model_;
+  std::unique_ptr<AtomMenuModel> model_;
   Menu* parent_;
 
  private:
@@ -74,6 +76,7 @@ class Menu : public mate::Wrappable,
                        Menu* menu);
   void SetIcon(int index, const gfx::Image& image);
   void SetSublabel(int index, const base::string16& sublabel);
+  void SetRole(int index, const base::string16& role);
   void Clear();
   int GetIndexOfCommandId(int command_id);
   int GetItemCount() const;
@@ -88,8 +91,8 @@ class Menu : public mate::Wrappable,
   base::Callback<bool(int)> is_checked_;
   base::Callback<bool(int)> is_enabled_;
   base::Callback<bool(int)> is_visible_;
-  base::Callback<v8::Handle<v8::Value>(int)> get_accelerator_;
-  base::Callback<void(int)> execute_command_;
+  base::Callback<v8::Local<v8::Value>(int, bool)> get_accelerator_;
+  base::Callback<void(v8::Local<v8::Value>, int)> execute_command_;
   base::Callback<void()> menu_will_show_;
 
   DISALLOW_COPY_AND_ASSIGN(Menu);
@@ -98,5 +101,28 @@ class Menu : public mate::Wrappable,
 }  // namespace api
 
 }  // namespace atom
+
+
+namespace mate {
+
+template<>
+struct Converter<atom::AtomMenuModel*> {
+  static bool FromV8(v8::Isolate* isolate, v8::Local<v8::Value> val,
+                     atom::AtomMenuModel** out) {
+    // null would be tranfered to NULL.
+    if (val->IsNull()) {
+      *out = nullptr;
+      return true;
+    }
+
+    atom::api::Menu* menu;
+    if (!Converter<atom::api::Menu*>::FromV8(isolate, val, &menu))
+      return false;
+    *out = menu->model();
+    return true;
+  }
+};
+
+}  // namespace mate
 
 #endif  // ATOM_BROWSER_API_ATOM_API_MENU_H_

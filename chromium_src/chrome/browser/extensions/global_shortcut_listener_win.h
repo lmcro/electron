@@ -5,28 +5,27 @@
 #ifndef CHROME_BROWSER_EXTENSIONS_GLOBAL_SHORTCUT_LISTENER_WIN_H_
 #define CHROME_BROWSER_EXTENSIONS_GLOBAL_SHORTCUT_LISTENER_WIN_H_
 
+#include <memory>
+
 #include <windows.h>
 
 #include "chrome/browser/extensions/global_shortcut_listener.h"
 #include "ui/gfx/win/singleton_hwnd.h"
+#include "ui/gfx/win/singleton_hwnd_observer.h"
 
 namespace extensions {
 
 // Windows-specific implementation of the GlobalShortcutListener class that
 // listens for global shortcuts. Handles setting up a keyboard hook and
 // forwarding its output to the base class for processing.
-class GlobalShortcutListenerWin : public GlobalShortcutListener,
-                                  public gfx::SingletonHwnd::Observer {
+class GlobalShortcutListenerWin : public GlobalShortcutListener {
  public:
   GlobalShortcutListenerWin();
   virtual ~GlobalShortcutListenerWin();
 
  private:
-  // The implementation of our Window Proc, called by SingletonHwnd.
-  virtual void OnWndProc(HWND hwnd,
-                         UINT message,
-                         WPARAM wparam,
-                         LPARAM lparam) override;
+  // The implementation of our Window Proc, called by SingletonHwndObserver.
+  void OnWndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
 
   // GlobalShortcutListener implementation.
   virtual void StartListening() override;
@@ -42,6 +41,8 @@ class GlobalShortcutListenerWin : public GlobalShortcutListener,
   // A map of registered accelerators and their registration ids.
   typedef std::map<ui::Accelerator, int> HotkeyIdMap;
   HotkeyIdMap hotkey_ids_;
+
+  std::unique_ptr<gfx::SingletonHwndObserver> singleton_hwnd_observer_;
 
   DISALLOW_COPY_AND_ASSIGN(GlobalShortcutListenerWin);
 };
